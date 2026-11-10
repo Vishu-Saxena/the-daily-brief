@@ -1,0 +1,2 @@
+import Link from 'next/link'; import { AuthForm } from '@/components/auth-form';
+export default function Register(){return <main className="shell flex min-h-[70vh] items-center justify-center py-16"><div className="w-full max-w-md"><div className="eyebrow">Make it yours</div><h1 className="serif mt-3 text-5xl font-bold">Build your daily brief.</h1><AuthForm mode="register"/><p className="mt-6 text-sm" style={{color:'var(--muted)'}}>Already a member? <Link href="/login" className="underline">Sign in</Link></p></div></main>}

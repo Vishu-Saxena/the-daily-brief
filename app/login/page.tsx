@@ -1,0 +1,2 @@
+import Link from 'next/link'; import { AuthForm } from '@/components/auth-form';
+export default function Login(){return <main className="shell flex min-h-[70vh] items-center justify-center py-16"><div className="w-full max-w-md"><div className="eyebrow">Welcome back</div><h1 className="serif mt-3 text-5xl font-bold">Sign in to your brief.</h1><AuthForm mode="login"/><p className="mt-6 text-sm" style={{color:'var(--muted)'}}>New here? <Link href="/register" className="underline">Create an account</Link></p></div></main>}
