@@ -54,7 +54,7 @@ export function PublishArticleForm() {
       const response = await fetch('/api/my-articles', { method: 'POST', body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not publish the article.');
-      router.push('/my-posts?published=1'); router.refresh();
+      router.push('/dashboard?published=1'); router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not publish the article.'); setPublishing(false); }
   }
 
