@@ -13,8 +13,16 @@ const publishedArticleSchema = new Schema({
   category: { type: String, required: true, enum: categories },
   sections: { type: [sectionSchema], required: true, validate: (sections: unknown[]) => sections.length > 0 },
   imageId: { type: String, default: null },
-  status: { type: String, enum: ['published'], default: 'published', required: true },
-  publishedAt: { type: Date, default: Date.now, required: true },
+  status: { type: String, enum: ['pending', 'published', 'rejected'], default: 'pending', required: true, index: true },
+  moderationState: { type: String, enum: ['clean', 'flagged', 'unavailable'], default: 'unavailable', required: true },
+  moderationCategories: { type: [String], default: [] },
+  moderationNote: { type: String, default: '' },
+  reviewedAt: { type: Date, default: null },
+  reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  reviewReason: { type: String, default: '' },
+  appealMessage: { type: String, default: '' },
+  appealStatus: { type: String, enum: ['none', 'pending', 'accepted', 'denied'], default: 'none', required: true },
+  publishedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 publishedArticleSchema.index({ authorId: 1, publishedAt: -1 });

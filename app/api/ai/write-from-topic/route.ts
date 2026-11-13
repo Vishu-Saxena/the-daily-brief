@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { categories } from '@/lib/data';
 import { getCurrentUser } from '@/lib/auth';
 import { cleanMarkdownText } from '@/lib/clean-markdown';
+import { getArticleModerationText, moderateSubmission } from '@/lib/content-moderation';
 
 export const runtime = 'nodejs';
 
@@ -110,6 +111,13 @@ export async function POST(request: Request) {
     article.title = cleanMarkdownText(article.title);
     article.dek = cleanMarkdownText(article.dek);
     article.sections = article.sections.map((section: { heading: string; paragraphs: string[] }) => ({ heading: cleanMarkdownText(section.heading), paragraphs: section.paragraphs.map(cleanMarkdownText) }));
+    const screening = await moderateSubmission(getArticleModerationText(article));
+    if (screening.state === 'flagged') {
+      return NextResponse.json({ error: 'The generated article contains language that needs review. Please adjust the topic and try again.' }, { status: 422 });
+    }
+    if (screening.state === 'unavailable') {
+      return NextResponse.json({ error: 'Safety screening is temporarily unavailable. Please try again shortly.' }, { status: 503 });
+    }
     const sources = (result.output ?? []).filter(item => item.type === 'web_search_call').flatMap(item => item.action?.sources ?? [])
       .filter((source): source is { title: string; url: string } => typeof source.title === 'string' && typeof source.url === 'string' && /^https?:\/\//.test(source.url))
       .filter((source, index, all) => all.findIndex(candidate => candidate.url === source.url) === index).slice(0, 2);

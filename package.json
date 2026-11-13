@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:moderation": "node --experimental-strip-types --test tests/content-moderation.test.mjs",
+    "admin:create": "node --env-file=.env.local scripts/create-admin.mjs",
     "seed:news": "node --env-file=.env.local scripts/seed-news.mjs"
   },
   "dependencies": {

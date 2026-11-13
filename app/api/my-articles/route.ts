@@ -5,6 +5,7 @@ import { PublishedArticleModel } from '@/models/PublishedArticle';
 import { categories } from '@/lib/data';
 import { deleteArticleImage, storeArticleImage } from '@/lib/article-images';
 import { cleanMarkdownText } from '@/lib/clean-markdown';
+import { moderateSubmission } from '@/lib/content-moderation';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -38,18 +39,38 @@ export async function POST(request: Request) {
     const articleLength = cleanSections.reduce((total, section) => total + section.paragraphs.join('').length, 0);
     if (articleLength < 250 || articleLength > 40000) return NextResponse.json({ error: 'The article must contain between 250 and 40,000 characters.' }, { status: 400 });
     await connectToDatabase();
+    let imageBuffer: Buffer | null = null;
+    let imageContentType = '';
     if (imageEntry instanceof File && imageEntry.size > 0) {
       if (imageEntry.size > 5 * 1024 * 1024) return NextResponse.json({ error: 'Image must be 5 MB or smaller.' }, { status: 413 });
-      const buffer = Buffer.from(await imageEntry.arrayBuffer());
-      const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-      const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-      const isWebp = buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+      imageBuffer = Buffer.from(await imageEntry.arrayBuffer());
+      const isPng = imageBuffer.length >= 8 && imageBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      const isJpeg = imageBuffer.length >= 3 && imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff;
+      const isWebp = imageBuffer.length >= 12 && imageBuffer.toString('ascii', 0, 4) === 'RIFF' && imageBuffer.toString('ascii', 8, 12) === 'WEBP';
       const actualType = isPng ? 'image/png' : isJpeg ? 'image/jpeg' : isWebp ? 'image/webp' : '';
       if (!actualType || imageEntry.type !== actualType) return NextResponse.json({ error: 'Upload a valid JPEG, PNG, or WebP image.' }, { status: 400 });
-      uploadedImageId = await storeArticleImage(buffer, actualType, String(user._id));
+      imageContentType = actualType;
     }
-    const article = await PublishedArticleModel.create({ authorId: user._id, title: cleanMarkdownText(title).trim(), dek: cleanMarkdownText(dek).trim(), category, sections: cleanSections, imageId: uploadedImageId, status: 'published' });
-    return NextResponse.json({ article: { id: String(article._id), title: article.title, imageAttached: Boolean(uploadedImageId) } }, { status: 201 });
+    const cleanTitle = cleanMarkdownText(title).trim();
+    const cleanDek = cleanMarkdownText(dek).trim();
+    const moderationText = [cleanTitle, cleanDek, ...cleanSections.flatMap(section => [section.heading, ...section.paragraphs])].join('\n\n');
+    const moderation = await moderateSubmission(moderationText, imageBuffer ? { buffer: imageBuffer, contentType: imageContentType } : undefined);
+    if (imageBuffer) uploadedImageId = await storeArticleImage(imageBuffer, imageContentType, String(user._id));
+    const article = await PublishedArticleModel.create({
+      authorId: user._id,
+      title: cleanTitle,
+      dek: cleanDek,
+      category,
+      sections: cleanSections,
+      imageId: uploadedImageId,
+      status: moderation.status,
+      moderationState: moderation.state,
+      moderationCategories: moderation.categories,
+      moderationNote: moderation.note,
+      publishedAt: moderation.status === 'published' ? new Date() : null,
+      appealStatus: 'none',
+    });
+    return NextResponse.json({ article: { id: String(article._id), title: article.title, imageAttached: Boolean(uploadedImageId) }, status: article.status, message: moderation.note || 'Your article passed screening and is now published.' }, { status: 201 });
   } catch (error) {
     console.error('Publish article error:', error instanceof Error ? error.name : 'unknown');
     if (uploadedImageId) await deleteArticleImage(uploadedImageId).catch(() => undefined);

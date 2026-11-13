@@ -8,15 +8,16 @@ import { categories } from '@/lib/data';
 type EditableSection = { heading: string; paragraphs: string[] };
 type PreparedArticle = { title: string; dek: string; category: string; sections: EditableSection[] };
 type ArticleSource = { title: string; url: string };
+type RejectedArticle = PreparedArticle & { id: string; imageId: string | null };
 
-export function PublishArticleForm() {
+export function PublishArticleForm({ rejectedArticle = null }: { rejectedArticle?: RejectedArticle | null }) {
   const router = useRouter();
   const [mode, setMode] = useState<'manual' | 'topic'>('manual');
   const [draft, setDraft] = useState('');
   const [topic, setTopic] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
-  const [prepared, setPrepared] = useState<PreparedArticle | null>(null);
+  const [prepared, setPrepared] = useState<PreparedArticle | null>(rejectedArticle);
   const [sources, setSources] = useState<ArticleSource[]>([]);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
@@ -51,10 +52,11 @@ export function PublishArticleForm() {
       form.append('article', JSON.stringify(prepared));
       form.append('imageAttached', String(Boolean(image)));
       if (image) form.append('image', image);
-      const response = await fetch('/api/my-articles', { method: 'POST', body: form });
+      const response = await fetch(rejectedArticle ? `/api/my-articles/${rejectedArticle.id}` : '/api/my-articles', { method: rejectedArticle ? 'PATCH' : 'POST', body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not publish the article.');
-      router.push('/dashboard?published=1'); router.refresh();
+      const result = data.status === 'published' ? 'published=1' : data.status === 'rejected' ? 'rejected=1' : 'pending=1';
+      router.push(`/dashboard?${result}`); router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not publish the article.'); setPublishing(false); }
   }
 
@@ -67,17 +69,17 @@ export function PublishArticleForm() {
   }
 
   if (prepared) return <div className="mt-10">
-    <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b pb-5" style={{ borderColor: 'var(--line)' }}><div><div className="eyebrow">AI prepared draft · editable</div><h2 className="serif mt-2 text-3xl font-bold">Review your story</h2></div><button type="button" onClick={() => setPrepared(null)} className="flex items-center gap-2 text-sm underline underline-offset-4"><ArrowLeft size={16}/> Back to draft</button></div>
+    <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b pb-5" style={{ borderColor: 'var(--line)' }}><div><div className="eyebrow">{rejectedArticle ? 'Rejected article · editable' : 'AI prepared draft · editable'}</div><h2 className="serif mt-2 text-3xl font-bold">{rejectedArticle ? 'Revise your story' : 'Review your story'}</h2></div>{rejectedArticle ? <a href="/dashboard" className="flex items-center gap-2 text-sm underline underline-offset-4"><ArrowLeft size={16}/> Cancel editing</a> : <button type="button" onClick={() => setPrepared(null)} className="flex items-center gap-2 text-sm underline underline-offset-4"><ArrowLeft size={16}/> Back to draft</button>}</div>
     <div className="mx-auto max-w-3xl">
       {mode === 'topic' && <div className="mb-6 rounded border p-4" style={{ borderColor: 'var(--line)', background: 'var(--surface)' }}><p className="text-sm">{searched ? 'The AI searched the web for this draft. Review sources and verify details before publishing.' : 'The AI used its existing knowledge; web search was not used for this draft.'}</p>{sources.length > 0 && <ul className="mt-3 list-inside list-disc space-y-1 text-sm">{sources.map(source => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer" className="text-[var(--accent)] underline">{source.title}</a></li>)}</ul>}</div>}
       <label className="eyebrow" htmlFor="article-title">Headline</label><input id="article-title" value={prepared.title} maxLength={180} onChange={event => setPrepared({ ...prepared, title: event.target.value })} className="serif mt-2 w-full border-b bg-transparent pb-4 text-3xl font-bold leading-tight outline-none focus:border-[var(--accent)] md:text-5xl" style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}/>
       <label className="mt-7 block text-xs font-semibold uppercase tracking-[.14em]" htmlFor="article-dek" style={{ color: 'var(--muted)' }}>Article summary</label><textarea id="article-dek" value={prepared.dek} maxLength={400} rows={3} onChange={event => setPrepared({ ...prepared, dek: event.target.value })} className="mt-2 w-full resize-y rounded border bg-transparent p-3 text-base leading-7 outline-none focus:border-[var(--accent)]" style={{ borderColor: 'var(--line)' }}/>
-      {imagePicker('article-image-edit')}
+      {rejectedArticle?.imageId && !image && <img src={`/api/uploads/${rejectedArticle.imageId}`} alt="Current article image" className="mt-7 max-h-72 w-full rounded object-cover"/>}{imagePicker('article-image-edit')}
       <label className="mt-6 block text-xs font-semibold uppercase tracking-[.14em]" htmlFor="article-category" style={{ color: 'var(--muted)' }}>Category</label><select id="article-category" value={prepared.category} onChange={event => setPrepared({ ...prepared, category: event.target.value })} className="mt-2 rounded border bg-[var(--surface)] px-4 py-3" style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}>{categories.map(category => <option key={category}>{category}</option>)}</select>
       <div className="prose prose-lg mt-10 max-w-none">{prepared.sections.map((section, index) => <section key={index} className="not-prose mb-8 rounded border p-5" style={{ borderColor: 'var(--line)', background: 'var(--surface)' }}><div className="mb-4 flex items-center gap-3"><input aria-label={`Section ${index + 1} heading`} value={section.heading} maxLength={160} onChange={event => updateSection(index, { heading: event.target.value })} className="serif min-w-0 flex-1 border-b bg-transparent pb-2 text-2xl font-bold outline-none focus:border-[var(--accent)]" style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}/><button type="button" aria-label="Remove section" onClick={() => setPrepared({ ...prepared, sections: prepared.sections.filter((_, i) => i !== index) })} disabled={prepared.sections.length <= 1} className="rounded p-2 text-[var(--muted)] hover:text-red-700 disabled:opacity-30"><Trash2 size={17}/></button></div><textarea aria-label={`Text for ${section.heading || `section ${index + 1}`}`} value={section.paragraphs.join('\n\n')} onChange={event => updateSection(index, { paragraphs: event.target.value.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean) })} rows={Math.max(6, section.paragraphs.join('\n\n').split('\n').length + 2)} className="w-full resize-y bg-transparent text-base leading-8 outline-none" style={{ color: 'var(--ink)' }}/></section>)}</div>
       <button type="button" onClick={() => setPrepared({ ...prepared, sections: [...prepared.sections, { heading: 'New section', paragraphs: [''] }] })} className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm" style={{ borderColor: 'var(--line)' }}><Plus size={16}/> Add section</button>
       {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
-      <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t pt-6" style={{ borderColor: 'var(--line)' }}><p className="max-w-lg text-sm leading-6" style={{ color: 'var(--muted)' }}>Publishing makes this article visible to readers and adds it to your My Posts page.</p><button type="button" onClick={publishArticle} disabled={publishing} className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white disabled:opacity-60">{publishing ? <LoaderCircle className="animate-spin" size={17}/> : <Send size={16}/>} {publishing ? 'Publishing…' : 'Publish article'}</button></div>
+      <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t pt-6" style={{ borderColor: 'var(--line)' }}><p className="max-w-lg text-sm leading-6" style={{ color: 'var(--muted)' }}>{rejectedArticle ? 'Your revised article will be screened again. It may publish immediately if it passes screening or return to review if flagged.' : 'We screen the article text and optional image before publication. Flagged or unavailable checks may send it to review.'}</p><button type="button" onClick={publishArticle} disabled={publishing} className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white disabled:opacity-60">{publishing ? <LoaderCircle className="animate-spin" size={17}/> : <Send size={16}/>} {publishing ? 'Submitting for review…' : rejectedArticle ? 'Resubmit revised article' : 'Submit article'}</button></div>
     </div>
   </div>;
 

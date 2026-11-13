@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { categories } from '@/lib/data';
 import { getCurrentUser } from '@/lib/auth';
+import { getArticleModerationText, moderateSubmission } from '@/lib/content-moderation';
 
 type ArticleDraftOutput = {
   output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
@@ -39,6 +40,14 @@ export async function POST(request: Request) {
     if (draft.length > 30000) return NextResponse.json({ error: 'Article draft is too long. Please keep it under 30,000 characters.' }, { status: 413 });
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: 'AI writing is not configured. Add OPENAI_API_KEY to .env.local and restart the server.' }, { status: 503 });
 
+    const draftScreening = await moderateSubmission(draft);
+    if (draftScreening.state === 'flagged') {
+      return NextResponse.json({ error: 'This draft contains profanity or abusive language. Please edit it before asking AI to prepare the article.' }, { status: 422 });
+    }
+    if (draftScreening.state === 'unavailable') {
+      return NextResponse.json({ error: 'Safety screening is temporarily unavailable. Please try again shortly.' }, { status: 503 });
+    }
+
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
@@ -72,6 +81,13 @@ export async function POST(request: Request) {
     const article = JSON.parse(text);
     if (!categories.includes(article.category) || !Array.isArray(article.sections) || !article.sections.length) {
       return NextResponse.json({ error: 'The AI response was incomplete. Please prepare the draft again.' }, { status: 502 });
+    }
+    const outputScreening = await moderateSubmission(getArticleModerationText(article));
+    if (outputScreening.state === 'flagged') {
+      return NextResponse.json({ error: 'The prepared article contains language that needs review. Please revise your draft and try again.' }, { status: 422 });
+    }
+    if (outputScreening.state === 'unavailable') {
+      return NextResponse.json({ error: 'Safety screening is temporarily unavailable. Please try again shortly.' }, { status: 503 });
     }
     return NextResponse.json({ article });
   } catch (error) {

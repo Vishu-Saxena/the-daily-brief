@@ -4,16 +4,25 @@ import { Readable } from 'node:stream';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getArticleImagesBucket } from '@/lib/article-images';
 import { PublishedArticleModel } from '@/models/PublishedArticle';
+import { getCurrentUser } from '@/lib/auth';
+import { isModerationAdmin } from '@/lib/moderation-auth';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   if (!ObjectId.isValid(params.id)) return NextResponse.json({ error: 'Image not found.' }, { status: 404 });
   await connectToDatabase();
   const imageId = new ObjectId(params.id);
-  const [publishedArticle, imageFile] = await Promise.all([
+  const [publishedArticle, imageFile, viewer] = await Promise.all([
     PublishedArticleModel.exists({ imageId: params.id, status: 'published' }),
     getArticleImagesBucket().find({ _id: imageId }).next(),
+    getCurrentUser(),
   ]);
-  if (!publishedArticle || !imageFile) return NextResponse.json({ error: 'Image not found.' }, { status: 404 });
+  const moderatorArticle = !publishedArticle && isModerationAdmin(viewer)
+    ? await PublishedArticleModel.exists({ imageId: params.id, status: { $in: ['pending', 'rejected'] } })
+    : false;
+  const ownedArticle = !publishedArticle && viewer
+    ? await PublishedArticleModel.exists({ imageId: params.id, authorId: viewer._id })
+    : false;
+  if ((!publishedArticle && !moderatorArticle && !ownedArticle) || !imageFile) return NextResponse.json({ error: 'Image not found.' }, { status: 404 });
   const contentType = imageFile.metadata?.contentType;
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) return NextResponse.json({ error: 'Image not found.' }, { status: 404 });
 
