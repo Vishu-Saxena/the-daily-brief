@@ -3,17 +3,21 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { moderateSubmission } from '../lib/content-moderation.ts';
 
 const originalFetch = globalThis.fetch;
-const originalKey = process.env.OPENAI_API_KEY;
+const originalKey = process.env.GROK_API_KEY;
 
-function moderationResponse(categories = {}, flagged = Object.values(categories).some(Boolean)) {
-  return { ok: true, status: 200, json: async () => ({ results: [{ flagged, categories }] }) };
+function moderationResponse(decision = 'clean', categories = []) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ output: [{ content: [{ type: 'output_text', text: JSON.stringify({ decision, categories }) }] }] }),
+  };
 }
 
-beforeEach(() => { process.env.OPENAI_API_KEY = 'test-key'; });
+beforeEach(() => { process.env.GROK_API_KEY = 'test-key'; });
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-  else process.env.OPENAI_API_KEY = originalKey;
+  if (originalKey === undefined) delete process.env.GROK_API_KEY;
+  else process.env.GROK_API_KEY = originalKey;
 });
 
 test('clean text passes screening and publishes', async () => {
@@ -40,17 +44,16 @@ test('multiple insults and profanity in an article are caught even when the API 
   assert.ok(result.categories.includes('profanity'));
 });
 
-test('clear severe categories are rejected and remain appealable', async () => {
-  globalThis.fetch = async () => moderationResponse({ 'sexual/minors': true });
+test('clear severe categories are rejected', async () => {
+  globalThis.fetch = async () => moderationResponse('reject', ['sexual_minors']);
   const result = await moderateSubmission('A submitted story with sufficient text.');
   assert.equal(result.state, 'flagged');
   assert.equal(result.status, 'rejected');
-  assert.ok(result.categories.includes('sexual/minors'));
-  assert.match(result.note, /appeal/i);
+  assert.ok(result.categories.includes('sexual_minors'));
 });
 
 test('other flagged content is held in the moderator queue', async () => {
-  globalThis.fetch = async () => moderationResponse({ harassment: true });
+  globalThis.fetch = async () => moderationResponse('review', ['harassment']);
   const result = await moderateSubmission('A submitted story with sufficient text.');
   assert.equal(result.status, 'pending');
   assert.ok(result.categories.includes('harassment'));
@@ -61,13 +64,14 @@ test('text and image are both sent to the moderation endpoint', async () => {
   globalThis.fetch = async (_url, options) => { requestBody = JSON.parse(options.body); return moderationResponse(); };
   const result = await moderateSubmission('Article text for the image test.', { buffer: Buffer.from('fake-image'), contentType: 'image/png' });
   assert.equal(result.status, 'published');
-  assert.equal(requestBody.model, 'omni-moderation-latest');
-  assert.equal(requestBody.input[0].text, 'Article text for the image test.');
-  assert.match(requestBody.input[1].image_url.url, /^data:image\/png;base64,/);
+  assert.equal(requestBody.model, 'grok-4.7');
+  assert.match(requestBody.input[0].content[0].text, /Article text for the image test\./);
+  assert.equal(requestBody.input[0].content[1].type, 'input_image');
+  assert.match(requestBody.input[0].content[1].image_url, /^data:image\/png;base64,/);
 });
 
 test('missing credentials fail closed to pending review', async () => {
-  delete process.env.OPENAI_API_KEY;
+  delete process.env.GROK_API_KEY;
   globalThis.fetch = async () => { throw new Error('Fetch should not be called without a key.'); };
   const result = await moderateSubmission('An article that has not been checked.');
   assert.equal(result.state, 'unavailable');

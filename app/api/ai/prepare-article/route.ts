@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const draft = typeof body.draft === 'string' ? body.draft.trim() : '';
     if (draft.length < 250) return NextResponse.json({ error: 'Please provide at least 250 characters so the article can be structured accurately.' }, { status: 400 });
     if (draft.length > 30000) return NextResponse.json({ error: 'Article draft is too long. Please keep it under 30,000 characters.' }, { status: 413 });
-    if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: 'AI writing is not configured. Add OPENAI_API_KEY to .env.local and restart the server.' }, { status: 503 });
+    if (!process.env.GROK_API_KEY) return NextResponse.json({ error: 'AI writing is not configured. Add GROK_API_KEY to .env.local and restart the server.' }, { status: 503 });
 
     const draftScreening = await moderateSubmission(draft);
     if (draftScreening.state === 'flagged') {
@@ -48,11 +48,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Safety screening is temporarily unavailable. Please try again shortly.' }, { status: 503 });
     }
 
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetch('https://api.x.ai/v1/responses', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${process.env.GROK_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.GROK_MODEL || 'grok-4.7',
         instructions: [
           'You are an editor helping a user structure their own news article for publication.',
           'Use only information and claims in the supplied draft. Do not invent facts, quotes, names, dates, statistics, sources, or background.',
@@ -72,8 +72,8 @@ export async function POST(request: Request) {
     const result = await response.json() as ArticleDraftOutput;
     if (!response.ok) {
       console.error('AI article preparation failed:', response.status, result.error?.type);
-      if (response.status === 401) return NextResponse.json({ error: 'OpenAI rejected the configured API key. Check OPENAI_API_KEY.' }, { status: 502 });
-      if (response.status === 429) return NextResponse.json({ error: 'OpenAI quota or rate limit reached. Check your API usage and billing.' }, { status: 503 });
+      if (response.status === 401) return NextResponse.json({ error: 'Grok rejected the configured API key. Check GROK_API_KEY.' }, { status: 502 });
+      if (response.status === 429) return NextResponse.json({ error: 'Grok quota or rate limit reached. Check your xAI API usage and billing.' }, { status: 503 });
       return NextResponse.json({ error: 'The article could not be prepared right now. Please try again.' }, { status: 502 });
     }
     const text = getOutputText(result);

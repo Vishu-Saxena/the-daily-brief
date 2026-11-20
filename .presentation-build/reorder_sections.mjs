@@ -1,0 +1,14 @@
+﻿const fs = await import('node:fs/promises');
+const p='.presentation-build/build_sahil_style.mjs';
+let s=await fs.readFile(p,'utf8');
+const a=s.indexOf('// 6 Technology Stack');
+const b=s.indexOf('// 9 Key Functionality');
+const c=s.indexOf('// 12 Conclusion');
+if(a<0||b<0||c<0||a>=b||c<a) throw new Error('Could not identify deck sections');
+const architecture=s.slice(a,b);
+s=s.slice(0,a)+s.slice(b);
+const insert=s.indexOf('// 12 Conclusion');
+if(insert<0) throw new Error('Could not locate conclusion');
+s=s.slice(0,insert)+architecture+s.slice(insert);
+await fs.writeFile(p,s,'utf8');
+console.log('Moved architecture section ahead of conclusion.');

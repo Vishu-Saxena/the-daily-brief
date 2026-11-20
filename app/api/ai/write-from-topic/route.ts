@@ -42,11 +42,11 @@ export async function POST(request: Request) {
     const topic = typeof body.topic === 'string' ? body.topic.trim() : '';
     if (topic.length < 5) return NextResponse.json({ error: 'Enter a topic with at least 5 characters.' }, { status: 400 });
     if (topic.length > 500) return NextResponse.json({ error: 'Keep the topic under 500 characters.' }, { status: 413 });
-    if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: 'AI writing is not configured. Add OPENAI_API_KEY to .env.local and restart the server.' }, { status: 503 });
+    if (!process.env.GROK_API_KEY) return NextResponse.json({ error: 'AI writing is not configured. Add GROK_API_KEY to .env.local and restart the server.' }, { status: 503 });
 
-    const endpoint = 'https://api.openai.com/v1/responses';
-    const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' };
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const endpoint = 'https://api.x.ai/v1/responses';
+    const headers = { Authorization: `Bearer ${process.env.GROK_API_KEY}`, 'Content-Type': 'application/json' };
+    const model = process.env.GROK_MODEL || 'grok-4.7';
 
     // Make the knowledge decision in a separate request with no search tool available.
     const assessmentResponse = await fetch(endpoint, {
@@ -66,8 +66,8 @@ export async function POST(request: Request) {
     const assessment = await assessmentResponse.json() as TopicArticleResponse;
     if (!assessmentResponse.ok) {
       console.error('AI topic assessment failed:', assessmentResponse.status, assessment.error?.type);
-      if (assessmentResponse.status === 401) return NextResponse.json({ error: 'OpenAI rejected the configured API key. Check OPENAI_API_KEY.' }, { status: 502 });
-      if (assessmentResponse.status === 429) return NextResponse.json({ error: 'OpenAI quota or rate limit reached. Check your API usage and billing.' }, { status: 503 });
+      if (assessmentResponse.status === 401) return NextResponse.json({ error: 'Grok rejected the configured API key. Check GROK_API_KEY.' }, { status: 502 });
+      if (assessmentResponse.status === 429) return NextResponse.json({ error: 'Grok quota or rate limit reached. Check your xAI API usage and billing.' }, { status: 503 });
       return NextResponse.json({ error: 'The topic could not be assessed right now. Please try again.' }, { status: 502 });
     }
     const assessmentText = (assessment.output ?? []).flatMap(item => item.content ?? []).find(part => part.type === 'output_text')?.text;
@@ -98,8 +98,8 @@ export async function POST(request: Request) {
     const result = await response.json() as TopicArticleResponse;
     if (!response.ok) {
       console.error('AI topic writing failed:', response.status, result.error?.type);
-      if (response.status === 401) return NextResponse.json({ error: 'OpenAI rejected the configured API key. Check OPENAI_API_KEY.' }, { status: 502 });
-      if (response.status === 429) return NextResponse.json({ error: 'OpenAI quota or rate limit reached. Check your API usage and billing.' }, { status: 503 });
+      if (response.status === 401) return NextResponse.json({ error: 'Grok rejected the configured API key. Check GROK_API_KEY.' }, { status: 502 });
+      if (response.status === 429) return NextResponse.json({ error: 'Grok quota or rate limit reached. Check your xAI API usage and billing.' }, { status: 503 });
       return NextResponse.json({ error: 'The article could not be generated right now. Please try again.' }, { status: 502 });
     }
     const text = (result.output ?? []).flatMap(item => item.content ?? []).find(part => part.type === 'output_text')?.text;

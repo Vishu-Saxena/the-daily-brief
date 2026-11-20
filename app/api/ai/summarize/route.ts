@@ -25,18 +25,18 @@ export async function POST(request: Request) {
     if (!title || !content) {
       return NextResponse.json({ error: 'Article title and available article text are required.' }, { status: 400 });
     }
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'AI summaries are not configured. Add OPENAI_API_KEY to .env.local and restart the dev server.' }, { status: 503 });
+    if (!process.env.GROK_API_KEY) {
+      return NextResponse.json({ error: 'AI summaries are not configured. Add GROK_API_KEY to .env.local and restart the dev server.' }, { status: 503 });
     }
 
-    const openAIResponse = await fetch('https://api.openai.com/v1/responses', {
+    const grokResponse = await fetch('https://api.x.ai/v1/responses', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.GROK_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: process.env.GROK_MODEL || 'grok-4.7',
         instructions: [
           'Summarize the supplied news article in 5 to 7 concise bullet points.',
           'Use clear, simple language and preserve only facts present in the supplied text.',
@@ -52,16 +52,16 @@ export async function POST(request: Request) {
       cache: 'no-store',
     });
 
-    const result = await openAIResponse.json() as ResponsesApiResult;
-    if (!openAIResponse.ok) {
-      console.error('OpenAI summarize request failed:', openAIResponse.status, result.error?.type);
-      if (openAIResponse.status === 401) return NextResponse.json({ error: 'OpenAI rejected the configured API key. Check OPENAI_API_KEY in .env.local.' }, { status: 502 });
-      if (openAIResponse.status === 429) return NextResponse.json({ error: 'OpenAI rate limit or account quota reached. Check your API usage and billing, then retry.' }, { status: 503 });
-      return NextResponse.json({ error: 'OpenAI could not summarize this story right now. Please try again.' }, { status: 502 });
+    const result = await grokResponse.json() as ResponsesApiResult;
+    if (!grokResponse.ok) {
+      console.error('Grok summarize request failed:', grokResponse.status, result.error?.type);
+      if (grokResponse.status === 401) return NextResponse.json({ error: 'Grok rejected the configured API key. Check GROK_API_KEY in .env.local.' }, { status: 502 });
+      if (grokResponse.status === 429) return NextResponse.json({ error: 'Grok rate limit or account quota reached. Check your xAI API usage and billing, then retry.' }, { status: 503 });
+      return NextResponse.json({ error: 'Grok could not summarize this story right now. Please try again.' }, { status: 502 });
     }
 
     const text = extractText(result);
-    if (!text) return NextResponse.json({ error: 'OpenAI returned an empty summary. Please try again.' }, { status: 502 });
+    if (!text) return NextResponse.json({ error: 'Grok returned an empty summary. Please try again.' }, { status: 502 });
     const summary = text.split('\n').map(line => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim()).filter(Boolean);
     return NextResponse.json({ mode: 'live', summary });
   } catch (error) {
